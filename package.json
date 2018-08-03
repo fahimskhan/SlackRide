@@ -1,0 +1,19 @@
+{
+  "name": "slackride",
+  "version": "1.0.0",
+  "description": "Easily book Uber rides through the Slack platform.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HackathonTeamRaody/SlackRide.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/HackathonTeamRaody/SlackRide/issues"
+  },
+  "homepage": "https://github.com/HackathonTeamRaody/SlackRide#readme"
+}
