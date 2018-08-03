@@ -3,6 +3,7 @@ const bodyParser = require('body-parser')
 const app = express();
 
 var Uber = require('node-uber');
+var CLIENT_SECRET = process.env.CLIENT_SECRET;
 
 var uber = new Uber({
   client_id: "O8C33qIolVTjUvIUc2VSKr53cGwEYJfg",
