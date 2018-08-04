@@ -1,9 +1,13 @@
 const express = require('express');
 const bodyParser = require('body-parser')
 const app = express();
+app.use(bodyParser.json())
+app.use(bodyParser.urlencoded({ extended : false}));
 var Uber = require('node-uber');
 var path = require('path');
-var CLIENT_SECRET = process.env.CLIENT_SECRET;
+var opn = require('opn');
+// var CLIENT_SECRET = process.env.CLIENT_SECRET;
+var CLIENT_SECRET = process.env.CLIENT_SECRET
 var uber = new Uber({
   client_id: "O8C33qIolVTjUvIUc2VSKr53cGwEYJfg",
   client_secret: CLIENT_SECRET,
@@ -13,33 +17,29 @@ var uber = new Uber({
   language: 'en_US', // optional, defaults to en_US
   sandbox: true, // optional, defaults to false
 })
-
 var products = [];
-
-
 var ACCESSTOKEN;
 
+
+//    LOGIN USER CALL FROM UBER API. OPENS CONFIRMATION WINDOW
 app.get('/api/login', function(request, response) {
   console.log("in login request");
   var url = uber.getAuthorizeUrl(['history','profile', 'request', 'places']);
-  response.redirect(url);
+  // response.redirect(url);
+  opn(url);
 });
 
-
-
-//Callback request that saves token
+//  CALLBACK FROM LOGIN. REDIRECTS TO INDEX.HTML, TODO: CLOSE WINDOW
 app.get('/api/callback', function(request, response) {
   console.log("in callback request");
   console.log('request', request.query);
    uber.authorizationAsync({authorization_code: request.query.code})
    .spread(function(access_token, refresh_token, authorizedScopes, tokenExpiration) {
      // store the user id and associated access_token, refresh_token, scopes and token expiration date
-     ACCESSTOKEN= access_token;
      console.log('New access_token retrieved: ' + access_token);
      console.log('... token allows access to scopes: ' + authorizedScopes);
      console.log('... token is valid until: ' + tokenExpiration);
      console.log('... after token expiration, re-authorize using refresh_token: ' + refresh_token);
-
      // redirect the user back to your actual app
      response.sendFile(path.join(__dirname + '/index.html'));
    })
@@ -47,9 +47,8 @@ app.get('/api/callback', function(request, response) {
      console.error(err);
    });
 });
-//return user information
-// 37.771544
-// -122.4098082
+
+//    GRAB USER INFO
 app.get('/api/me', function(req, res){
   uber.user.getProfileAsync()
   .then(function(response){
@@ -58,17 +57,13 @@ app.get('/api/me', function(req, res){
   .catch( (err)=> console.log(err));
 })
 
-//localhost:3000/api/products/?lat=37.771544&lng=37.771544
-// ?strID=XXXX&strName=yyyy&strDate=zzzzz
 
-//list products available near a start location
-app.get('/api/products', function(request, response) {
-  //this works if you pass params lat and lng like http://localhost:3000/api/products/?lat=37.771544&lng=-122.4098082
-  var testLat = request.query.lat;
-  var testLng = request.query.lng;
-  var lat = 37.771544;
-  var lng = -122.40978020000001;
-  console.log("lat and lng from products route: ", lat, lng);
+//  LIST PRODUCTS AVAILABLE AT CURRENT LOCATION
+// RETURNS IN OBJECT FORMAT WITH KEY "products" and value
+// OF AN ARRAY OF OBJECTS
+app.post('/api/products', function(request, response) {
+  var lat = request.body.startLat;
+  var lng = request.body.startLong;
   // if no query params sent, respond with Bad Request
   if (!lat || !lng) {
     response.sendStatus(400);
@@ -92,51 +87,74 @@ app.get('/api/products', function(request, response) {
   }
 });
 
+//    ESTIMATE FARE PRICE FROM START LOC TO END LOC.
+//    RETURNS PHAT OBJECT WITH KEY "fair_id",   SAVE THIS.
 app.post('/api/estimate', function (request, response) {
 //grab stuff from request . bodyParser
 //fetch(localhost.
-  console.log(request.body);
-
-  // let productId = request.query.productId;
-  // let startLong = request.query.startLong;
-  // let startLat = request.query.startLat;
-  // let endLong = request.query.endLong;
-  // let endLat= request.query.endLat;
-
+  let productId = request.body.productId;
+  let startLong = request.body.startLong;
+  let startLat = request.body.startLat;
+  let endLong = request.body.endLong;
+  let endLat = request.body.endLat;
   //make request to uber
   uber.requests.getEstimatesAsync({
-    "product_id": "a1111c8c-c720-46c3-8534-2fcdd730040d",
+    "product_id": productId,
     "start_latitude": startLat,
     "start_longitude": startLong,
     "end_latitude": endLat,
-    "end_longitude": endLong,
+    "end_longitude": endLong
   })
   .then(function(res) {
-    console.log(res);
+    //returns object with KEY: "fare_id"
+    response.send(res)
   })
   .catch(function(err) {
-    console.log(err);
+    console.log("error with estimate", err);
   })
-
-
-
 })
+
+app.post('/api/status', function(request, response) {
+  console.log('checking status...');
+  uber.requests.getCurrentAsync()
+  .then((res) => {
+      response.send(res);
+    })
+  .error((err) => {
+    response.send(err);
+  });
+});
+
+//    CALL THIS WITH CHOSEN 'product_id' AND 'fare_id' FROM ABOVE ROUTE CALL
+//    THIS ACTUALLY CALLS THE UBER
 
 app.post('/api/request', function(request, response)  {
-  //grab stuff from body parser
-
+  //grab stuff from body
+  console.log('in top of /request', request.body.productId, request.body.fareId);
+  let productId = request.body.productId;
+  let fareId = request.body.fareId;
+  let startLong = request.body.startLong;
+  let startLat = request.body.startLat;
+  let endLong = request.body.endLong;
+  let endLat = request.body.endLat;
+//pass this stuff to uber
   uber.requests.createAsync({
-  "fare_id": "d30e732b8bba22c9cdc10513ee86380087cb4a6f89e37ad21ba2a39f3a1ba960",
-  "product_id": "a1111c8c-c720-46c3-8534-2fcdd730040d",
-  "start_latitude": 37.761492,
-  "start_longitude": -122.423941,
-  "end_latitude": 37.775393,
-  "end_longitude": -122.417546
+  "fare_id": fareId,
+  "product_id": productId,
+  "start_latitude": startLat,
+  "start_longitude": startLong,
+  "end_latitude": endLat,
+  "end_longitude": endLong
+  })
+  .then(function(res) {
+    console.log('in then')
+    response.send(res);
+  })
+  .error(function(err) {
+    response.send(err);
+  });
 })
-.then(function(res) { console.log(res); })
-.error(function(err) { console.error(err); });
 
-})
 
 app.listen(3000, function () {
   console.log('Listening on port 3000!');

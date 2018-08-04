@@ -1,10 +1,29 @@
-require('dotenv').load();
-
 //requiring geolocation
-//var geolocation = require('geolocation');
+var geolocation = require('geolocation');
 var firstPass = true;
+var NodeGeocoder = require('node-geocoder');
+var GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 // var boolFalse = true;
-var services = [];
+var uberServerUrl = 'http://localhost:3000';
+var axios = require('axios');
+var filteredProducts = null;
+var productId = null;
+var fare_id = null;
+
+//Google earth locator
+var options = {
+ provider: 'google',
+ httpAdapter: 'https', // Default
+ apiKey: GOOGLE_API_KEY, // for Mapquest, OpenCage, Google Premier
+ formatter: null         // 'gpx', 'string', ...
+};
+var geocoder = NodeGeocoder(options);
+// geocoder.geocode("Howard St and 9th St", function ( err, data ) {
+//   console.log("GOOGLE DATA: ", data)
+// });
+
+
+var products = [];
 var milestoneTracker = {
   MS1: false,
   MS2: false,
@@ -15,10 +34,10 @@ var watsonMilestones = {
     loggedIn: false,
   },
   MS1: {
-    // startLat: null,
-    // startLng: null,
-    // endLat: null,
-    // endLng: null,
+    startLat: null,
+    startLng: null,
+    endLat: null,
+    endLng: null,
     startLocation: '',
     endLocation: '',
     numRiders: null,
@@ -55,6 +74,57 @@ var checkMS1 = function (data){
     watsonMilestones.MS1.startLocation = fromAddr;
     watsonMilestones.MS1.endLocation = toAddr;
     firstPass = false;
+
+    geocoder.geocode(toAddr)
+    .then((data) => {
+      return data[0]
+    })
+    .then((dataObj) => {
+      var endLat = dataObj.latitude;
+      var endLng = dataObj.longitude;
+      watsonMilestones.MS1.endLat = endLat;
+      watsonMilestones.MS1.endLng = endLng;
+    })
+    .catch( (err) => {
+      console.log(err);
+    })
+
+
+    geocoder.geocode(fromAddr)
+    .then((data) => {
+      return data[0]
+    })
+    .then((dataObj) => {
+      var startLat = dataObj.latitude;
+      var startLng = dataObj.longitude;
+      watsonMilestones.MS1.startLat = startLat;
+      watsonMilestones.MS1.startLng = startLng;
+      return [startLat, startLng];
+    })
+    .then((coords) => {
+      axios.post(uberServerUrl+'/api/products', {
+        startLat: coords[0],
+        startLong: coords[1],
+      })
+      .then( (res) => {
+        if (res.status===450){
+          console.log('no products found')
+        } else if (res.status == 500){
+          console.log('error connecting to uber');
+        } else {
+          products = res.data.products;
+          // console.log('unfiltered products:', products)
+          filteredProducts = filterProducts(products);
+        //   console.log('filtered products: ', filteredProducts);
+        }
+      })
+      .catch( (err) => {
+        console.log(err);
+      })
+    })
+    .catch( (err) => {
+      console.log(err);
+    })
     //lookup and populate coordinates
   }
   if (data.context.no_of_riders){
@@ -75,30 +145,135 @@ var checkMS2 = function (data){
   }
   return true;
 };
-var findRides = function(){
-  ///google earth coordinate Conversation
-  //uber request to find services, create
-  //for (service in servies){
-  // services.push({rideType: ProductId})
-// }
-  return;
+
+var filterProducts = function(products){
+  var filteredProducts = [];
+  for (var i=0; i<products.length; i++){
+    var newProduct = {
+      type: products[i].display_name,
+      product_id: products[i].product_id,
+    }
+    filteredProducts.push(newProduct);
+  }
+  return filteredProducts;
+}
+var requestUber = function(message, bot){
+  var type = watsonMilestones.MS2.rideType;
+  for (var i=0; i<filteredProducts.length; i++){
+    if (filteredProducts[i].type == type){
+      productId = filteredProducts[i].product_id;
+    }
+  };
+  axios.post(uberServerUrl+'/api/estimate', {
+    productId: productId,
+    startLong: watsonMilestones.MS1.startLng,
+    startLat: watsonMilestones.MS1.startLat,
+    endLong: watsonMilestones.MS1.endLng,
+    endLat: watsonMilestones.MS1.endLat,
+  })
+  .then( (res) => {
+
+    var price = res.data.fare.display;
+    fare_id = res.data.fare.fare_id
+    var start = watsonMilestones.MS1.startLocation;
+    var destination = watsonMilestones.MS1.endLocation;
+    bot.reply(message, "Found a " + watsonMilestones.MS2.rideType + " ride from " + start + " to " + destination + " for " + price + ". Do you want me to book it?");
+
+    //find fare_id.
+    //find price ("display")
+    //bot.send price to user for confirmation.
+  })
+  .catch( (err) =>{
+    console.log(err);
+  })
+  //find productID from map of products.
+  //request ride with productID
+  // setTimeout(function(){
+  //   bot.reply(message, 'Found your uber');
+  // }, 3000);
 };
 
-var requestUber = function(message, bot){
-  //find productID from map of services.
-  //request ride with productID
-  setTimeout(function(){
-    bot.reply(message, 'Found your uber');
-  }, 3000);
-};
+var setWebhook = function(data) {
+  console.log('in set webhooks');
+  setInterval(()=>{
+    axios.post(uberServerUrl+'/api/status')
+    .then((res)=>{
+      console.log(res.data);
+    })
+    .catch((error)=>{
+      console.log(error)
+    })
+  }, 4000);
+}
+
+var processConfirmation = function(bot, message, data){
+  var confirmation = data.context.ride_confirmation;
+  if (confirmation === 'yes'){
+    axios.post(uberServerUrl+'/api/request',{
+      productId: productId,
+      fareId: fare_id,
+      startLong: watsonMilestones.MS1.startLng,
+      startLat: watsonMilestones.MS1.startLat,
+      endLat: watsonMilestones.MS1.endLat,
+      endLong: watsonMilestones.MS1.endLng
+    })
+    .then( (res) => {
+      console.log(res);
+      setWebhook(data);
+      bot.reply(message, 'Your ride has been booked! Check uber app to track ride. Thank you for using uber bot!');
+    })
+    .catch( (err) => {
+      console.log(err);
+    })
+  }
+  else{
+    watsonMilestones.MS1 = {
+      startLat: null,
+      startLng: null,
+      endLat: null,
+      endLng: null,
+      startLocation: '',
+      endLocation: '',
+      numRiders: null,
+    };
+    watsonMilestones.MS2 = {
+      rideType: ''
+    };
+    watsonMilestones.confirmation = {
+      confirmed: false,
+    };
+    productId = null;
+    fare_id = null;
+    bot.reply(message, 'Ok, your ride has been canceled! Uber bot is always here to book your next ride!');
+  }
+}
+
+var checkConfirmation = function(data){
+  if (!data.context.ride_confirmation){
+    return false
+  } else{
+    return true;
+  }
+}
 
 slackController.hears(['.*'], ['direct_message', 'direct_mention', 'mention'], function(bot, message) {
   slackController.log('Slack message received');
-  //console.log('msg before', message);
 
   if (!watsonMilestones.login.loggedIn){
     // request to /logged
     //console.log('Inside of check');
+    axios.get(uberServerUrl+'/api/login')
+    .then((res)=>{
+      if (res.status==200){
+        console.log("200 status on login");
+      } else{
+        console.log('some other status', res.status);
+      }
+    })
+    .catch((err)=>{
+      console.log(err);
+    });
+
     watsonMilestones.login.loggedIn = true;
     bot.reply(message, 'Logged in to uber. How can I help you? (Please enter adresses in perenthesis)');
   } else {
@@ -113,11 +288,14 @@ slackController.hears(['.*'], ['direct_message', 'direct_mention', 'mention'], f
         //console.log('STORAGE', message.watsonData);
         if (checkMS1(data) && !milestoneTracker.MS1){
           milestoneTracker.MS1 = true;
-          findRides();
         }
         if (checkMS2(data) && !milestoneTracker.MS2){
           milestoneTracker.MS2 = true;
           requestUber(message, bot);
+        }
+        if (checkConfirmation(data) && !milestoneTracker.confirmation){ //zzzz potential but if user enters 'yes' or 'no' earlier in the converstaion
+          milestoneTracker.confirmation = true;
+          processConfirmation(bot, message, data);
         }
 
         // if (data.context.start_location && data.context.end_location && data.context.ride_type) {
@@ -126,7 +304,6 @@ slackController.hears(['.*'], ['direct_message', 'direct_mention', 'mention'], f
         //series of ifs checking for completed milestones.
         //once milestone is hit, make request to uberServer.js route.
         //else, continue conversation
-        console.log('MILESTONE Tracker', milestoneTracker);
         bot.reply(message, message.watsonData.output.text.join('\n'));
 
       } else {

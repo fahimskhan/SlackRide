@@ -4,7 +4,7 @@
   "description": "Easily book Uber rides through the Slack platform.",
   "main": "index.js",
   "scripts": {
-    "start": "node uberServer.js",
+    "start": "node watsonMiddleware.js & node uberServer.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -18,9 +18,15 @@
   },
   "homepage": "https://github.com/HackathonTeamRaody/SlackRide#readme",
   "dependencies": {
+    "axios": "^0.18.0",
     "body-parser": "^1.18.3",
+    "botkit": "^0.6.16",
+    "botkit-middleware-watson": "^1.8.0",
     "express": "^4.16.3",
+    "geolocation": "^0.2.0",
+    "node-geocoder": "^3.22.0",
     "node-uber": "^2.0.0",
-    "oauth20-provider": "^0.6.0"
+    "oauth20-provider": "^0.6.0",
+    "opn": "^5.3.0"
   }
 }
