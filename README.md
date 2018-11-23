@@ -1,6 +1,6 @@
 # Uber_Bot
 
-*This app was built within 24 hours at a hackathon by Ben Elgren, Rohan Rao, Sean Yang and myself. The app was built locally and the final product uploaded to Ben Elgren's github page, where it has been forked from.*
+*This app was built within 24 hours at a hackathon by Ben Elgren, Rohan Rao, Sean Yang and myself. The app was built locally and the final product uploaded to github organization 'HackathonTeamRaody', where it has been forked from.*
 
 **Demo video:** https://vimeo.com/302388942
 
